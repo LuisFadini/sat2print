@@ -1,7 +1,9 @@
 import pymupdf
 import os
 import numpy as np
+import config
 from PIL import Image
+
 
 def crop_to_content(pix, margin=5):
     img = np.frombuffer(pix.samples, dtype=np.uint8)
@@ -45,10 +47,10 @@ def crop_to_content(pix, margin=5):
     return cropped
 
 
-doc = pymupdf.open("input.pdf")
+doc = pymupdf.open(config.INPUT_PDF)
 
-if not os.path.exists("output/"):
-    os.makedirs("output/")
+if not os.path.exists(config.IMAGE_FOLDER):
+    os.makedirs(config.IMAGE_FOLDER)
 
 output_index = 1
 
@@ -62,5 +64,5 @@ for i, page in enumerate(doc):
     cropped = crop_to_content(pix, margin=5)
 
     img = Image.fromarray(cropped)
-    img.save(f"output/question_{output_index}.png")
+    img.save(f"{config.IMAGE_FOLDER}question_{output_index}.png")
     output_index += 1
