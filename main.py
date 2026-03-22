@@ -2,6 +2,7 @@ import pymupdf
 import os
 import numpy as np
 import config
+import re
 from PIL import Image
 
 
@@ -47,11 +48,8 @@ def crop_to_content(pix, margin=5):
     return cropped
 
 
-if __name__ == "__main__":
-    doc = pymupdf.open(config.INPUT_PDF)
-
-    if not os.path.exists(config.IMAGE_FOLDER):
-        os.makedirs(config.IMAGE_FOLDER)
+def extract_questions_to_image(input_file):
+    doc = pymupdf.open(input_file)
 
     output_index = 1
 
@@ -67,3 +65,60 @@ if __name__ == "__main__":
         img = Image.fromarray(cropped)
         img.save(f"{config.IMAGE_FOLDER}question_{output_index}.png")
         output_index += 1
+    doc.close()
+
+
+def generate_final_pdf(output_file):
+    doc = pymupdf.open()
+
+    a4_w, a4_h = pymupdf.paper_size("a4")
+    SCALE = 72 / config.DPI
+
+    def extract_number(filename):
+        match = re.search(r"\d+", filename)
+        return int(match.group()) if match else 0
+
+    images = sorted(
+        [f for f in os.listdir(config.IMAGE_FOLDER) if f.endswith(".png")],
+        key=extract_number,
+    )
+
+    page = doc.new_page(width=a4_w, height=a4_h)
+    y_cursor = config.MARGIN
+
+    for image in images:
+        path = os.path.join(config.IMAGE_FOLDER, image)
+
+        with Image.open(path) as im:
+            px_w, px_h = im.size
+
+        width = px_w * SCALE
+        height = px_h * SCALE
+
+        max_width = a4_w - 2 * config.MARGIN
+        if width > max_width:
+            scale = max_width / width
+            width *= scale
+            height *= scale
+
+        if y_cursor + height > a4_h - config.MARGIN:
+            page = doc.new_page(width=a4_w, height=a4_h)
+            y_cursor = config.MARGIN
+
+        x = config.MARGIN
+        rect = pymupdf.Rect(x, y_cursor, x + width, y_cursor + height)
+
+        page.insert_image(rect, filename=path)
+
+        y_cursor += height + config.SPACING
+
+    doc.save(output_file)
+    doc.close()
+
+
+if __name__ == "__main__":
+    if not os.path.exists(config.IMAGE_FOLDER):
+        os.makedirs(config.IMAGE_FOLDER)
+
+    extract_questions_to_image(config.INPUT_PDF)
+    generate_final_pdf(config.OUTPUT_PDF)
