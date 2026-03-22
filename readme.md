@@ -8,6 +8,6 @@ It removes unnecessary whitespace, skips blank pages, and packs multiple questio
 
 - [x] Extract pages
 - [x] Crop pages to content
-- [ ] Combine processed pages into a printable PDF
+- [x] Combine processed pages into a printable PDF
 - [ ] Allow specifying input file via CLI
 - [ ] Support multiple output formats (PDF, PNG, per-question images)
