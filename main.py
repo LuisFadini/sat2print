@@ -5,6 +5,7 @@ import config
 import re
 import tempfile
 import pytesseract
+import shutil
 from PIL import Image
 
 
@@ -142,3 +143,5 @@ if __name__ == "__main__":
 
     extract_questions_to_image(config.INPUT_PDF)
     generate_final_pdf(config.OUTPUT_PDF)
+
+    shutil.rmtree(config.IMAGE_FOLDER)
