@@ -47,22 +47,23 @@ def crop_to_content(pix, margin=5):
     return cropped
 
 
-doc = pymupdf.open(config.INPUT_PDF)
+if __name__ == "__main__":
+    doc = pymupdf.open(config.INPUT_PDF)
 
-if not os.path.exists(config.IMAGE_FOLDER):
-    os.makedirs(config.IMAGE_FOLDER)
+    if not os.path.exists(config.IMAGE_FOLDER):
+        os.makedirs(config.IMAGE_FOLDER)
 
-output_index = 1
+    output_index = 1
 
-for i, page in enumerate(doc):
-    pix = page.get_pixmap(dpi=300)
+    for i, page in enumerate(doc):
+        if not page.get_text("text").strip():
+            print(f"Skipping blank page {i+1}")
+            continue
 
-    if not page.get_text("text").strip():
-        print(f"Skipping blank page {i+1}")
-        continue
+        pix = page.get_pixmap(dpi=config.DPI)
 
-    cropped = crop_to_content(pix, margin=5)
+        cropped = crop_to_content(pix, margin=5)
 
-    img = Image.fromarray(cropped)
-    img.save(f"{config.IMAGE_FOLDER}question_{output_index}.png")
-    output_index += 1
+        img = Image.fromarray(cropped)
+        img.save(f"{config.IMAGE_FOLDER}question_{output_index}.png")
+        output_index += 1
