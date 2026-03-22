@@ -3,6 +3,8 @@ import os
 import numpy as np
 import config
 import re
+import tempfile
+import pytesseract
 from PIL import Image
 
 
@@ -109,6 +111,24 @@ def generate_final_pdf(output_file):
         rect = pymupdf.Rect(x, y_cursor, x + width, y_cursor + height)
 
         page.insert_image(rect, filename=path)
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                ocr_pdf_bytes = pytesseract.image_to_pdf_or_hocr(
+                    Image.open(path), extension="pdf"
+                )
+                tmp.write(ocr_pdf_bytes)
+                tmp.flush()
+
+                ocr_doc = pymupdf.open(tmp.name)
+
+                page.show_pdf_page(rect, ocr_doc, 0)
+
+                ocr_doc.close()
+                os.unlink(tmp.name)
+
+        except Exception as e:
+            print(f"OCR failed for {image}: {e}")
 
         y_cursor += height + config.SPACING
 
