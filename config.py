@@ -1,4 +1,3 @@
-INPUT_PDF = "input.pdf"
 OUTPUT_PDF = "output.pdf"
 IMAGE_FOLDER = "tmp/"
 DPI = 300

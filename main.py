@@ -6,6 +6,7 @@ import re
 import tempfile
 import pytesseract
 import shutil
+import argparse
 from PIL import Image
 
 
@@ -138,10 +139,23 @@ def generate_final_pdf(output_file):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input", help="Path to input PDF file")
+    parser.add_argument(
+        "-o", "--output", help="Output PDF file (overrides default)", default=None
+    )
+    args = parser.parse_args()
+
+    input_path = args.input
+    output_path = args.output if args.output else config.OUTPUT_PDF
+
+    if not os.path.exists(input_path):
+        parser.error(f"File does not exist: {input_path}")
+
     if not os.path.exists(config.IMAGE_FOLDER):
         os.makedirs(config.IMAGE_FOLDER)
 
-    extract_questions_to_image(config.INPUT_PDF)
-    generate_final_pdf(config.OUTPUT_PDF)
+    extract_questions_to_image(input_path)
+    generate_final_pdf(output_path)
 
     shutil.rmtree(config.IMAGE_FOLDER)
