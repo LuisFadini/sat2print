@@ -72,67 +72,135 @@ def extract_questions_to_image(input_file):
     doc.close()
 
 
-def generate_final_pdf(output_file):
+def add_ocr_layer(page, rect, image_path):
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".pdf",
+            delete=False,
+        ) as tmp:
+            with Image.open(image_path) as pil_img:
+                ocr_pdf_bytes = pytesseract.image_to_pdf_or_hocr(
+                    pil_img,
+                    extension="pdf",
+                )
+
+            tmp.write(ocr_pdf_bytes)
+            tmp.flush()
+
+            ocr_doc = pymupdf.open(tmp.name)
+
+            page.show_pdf_page(rect, ocr_doc, 0)
+
+            ocr_doc.close()
+            os.unlink(tmp.name)
+
+    except Exception as e:
+        print(f"OCR failed for {image_path}: {e}")
+
+
+def generate_final_pdf(output_file, auto_spacing=False, max_images_per_page=None):
     doc = pymupdf.open()
 
     a4_w, a4_h = pymupdf.paper_size("a4")
-    SCALE = 72 / config.DPI
-
-    def extract_number(filename):
-        match = re.search(r"\d+", filename)
-        return int(match.group()) if match else 0
+    usable_height = a4_h - (2 * config.MARGIN)
+    scale = 72 / config.DPI
 
     images = sorted(
-        [f for f in os.listdir(config.IMAGE_FOLDER) if f.endswith(".png")],
-        key=extract_number,
+        (f for f in os.listdir(config.IMAGE_FOLDER) if f.endswith(".png")),
+        key=lambda f: int(re.search(r"\d+", f).group()),
     )
 
-    page = doc.new_page(width=a4_w, height=a4_h)
-    y_cursor = config.MARGIN
+    image_data = []
 
     for image in images:
         path = os.path.join(config.IMAGE_FOLDER, image)
 
         with Image.open(path) as im:
-            px_w, px_h = im.size
+            width, height = im.size
 
-        width = px_w * SCALE
-        height = px_h * SCALE
+        width *= scale
+        height *= scale
 
-        max_width = a4_w - 2 * config.MARGIN
+        max_width = a4_w - (2 * config.MARGIN)
+
         if width > max_width:
-            scale = max_width / width
-            width *= scale
-            height *= scale
+            factor = max_width / width
+            width *= factor
+            height *= factor
 
-        if y_cursor + height > a4_h - config.MARGIN:
-            page = doc.new_page(width=a4_w, height=a4_h)
-            y_cursor = config.MARGIN
+        image_data.append(
+            {
+                "path": path,
+                "width": width,
+                "height": height,
+            }
+        )
 
-        x = config.MARGIN
-        rect = pymupdf.Rect(x, y_cursor, x + width, y_cursor + height)
+    pages = []
+    current_page = []
+    current_height = 0
 
-        page.insert_image(rect, filename=path)
+    for img in image_data:
+        required = img["height"]
 
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                ocr_pdf_bytes = pytesseract.image_to_pdf_or_hocr(
-                    Image.open(path), extension="pdf"
-                )
-                tmp.write(ocr_pdf_bytes)
-                tmp.flush()
+        if current_page:
+            required += config.SPACING
 
-                ocr_doc = pymupdf.open(tmp.name)
+        height_limit_hit = (
+            current_height + required > usable_height
+        )
 
-                page.show_pdf_page(rect, ocr_doc, 0)
+        image_limit_hit = (
+            max_images_per_page is not None
+            and len(current_page) >= max_images_per_page
+        )
 
-                ocr_doc.close()
-                os.unlink(tmp.name)
+        if current_page and (
+            height_limit_hit or image_limit_hit
+        ):
+            pages.append(current_page)
 
-        except Exception as e:
-            print(f"OCR failed for {image}: {e}")
+            current_page = [img]
+            current_height = img["height"]
+        else:
+            current_page.append(img)
+            current_height += required
 
-        y_cursor += height + config.SPACING
+    if current_page:
+        pages.append(current_page)
+
+    for page_images in pages:
+        page = doc.new_page(width=a4_w, height=a4_h)
+
+        if auto_spacing:
+            used_height = sum(img["height"] for img in page_images)
+
+            extra_spacing = max(0, usable_height - used_height) / len(page_images)
+        else:
+            extra_spacing = config.SPACING
+
+        y = config.MARGIN
+
+        for img in page_images:
+            rect = pymupdf.Rect(
+                config.MARGIN,
+                y,
+                config.MARGIN + img["width"],
+                y + img["height"],
+            )
+
+            page.insert_image(
+                rect,
+                filename=img["path"],
+            )
+
+            add_ocr_layer(
+                page,
+                rect,
+                img["path"],
+            )
+
+            y += img["height"] + extra_spacing
 
     doc.save(output_file)
     doc.close()
@@ -143,6 +211,17 @@ if __name__ == "__main__":
     parser.add_argument("input", help="Path to input PDF file")
     parser.add_argument(
         "-o", "--output", help="Output PDF file (overrides default)", default=None
+    )
+    parser.add_argument(
+        "--auto-spacing",
+        action="store_true",
+        help="Expand images on each page to fill available vertical space",
+    )
+    parser.add_argument(
+        "--max-images-per-page",
+        type=int,
+        default=None,
+        help="Maximum number of images allowed on a page",
     )
     args = parser.parse_args()
 
@@ -156,6 +235,10 @@ if __name__ == "__main__":
         os.makedirs(config.IMAGE_FOLDER)
 
     extract_questions_to_image(input_path)
-    generate_final_pdf(output_path)
+    generate_final_pdf(
+        output_path,
+        auto_spacing=args.auto_spacing,
+        max_images_per_page=args.max_images_per_page,
+    )
 
     shutil.rmtree(config.IMAGE_FOLDER)
